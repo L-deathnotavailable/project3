@@ -39,3 +39,24 @@ https://github.com/coreybutler/nvm-windows#readme
 9. Access to Herd link from your browser
 
 You are setup!
+
+## Architecture
+
+The application follows Laravel's MVC structure:
+
+- `app/Models`: Eloquent entities and relationships;
+- `app/Http/Controllers`: web request orchestration;
+- `app/Http/Requests`: reusable validation rules;
+- `app/Policies`: resource authorization;
+- `resources/views`: Blade presentation layer;
+- `routes/web.php`: browser routes;
+- `routes/api.php`: reserved entry point for versioned REST routes.
+
+Future API controllers should be placed in `app/Http/Controllers/Api/V1` and reuse the
+existing models, form requests and policies. JSON representation belongs in
+`app/Http/Resources`, keeping it independent from the Blade views.
+
+## REST API
+
+The versioned API is available under `/api/v1` and uses Laravel Sanctum bearer tokens.
+Its endpoints, response format and curl examples are documented in [`docs/API.md`](docs/API.md).
