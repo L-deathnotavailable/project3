@@ -76,9 +76,6 @@ Route
 app/
 ├── Http/
 │   ├── Controllers/
-│   │   ├── DashboardController.php
-│   │   ├── NoteController.php
-│   │   ├── TagController.php
 │   │   └── Api/V1/
 │   │       ├── AuthController.php
 │   │       ├── NoteController.php
@@ -89,14 +86,15 @@ app/
 ├── Models/
 └── Policies/NotePolicy.php
 
-resources/views/
-├── dashboard.blade.php
-├── notes/index.blade.php
-└── tags/index.blade.php
-
 routes/
-├── web.php
 └── api.php
+
+frontend/src/
+├── app/
+├── components/
+├── features/
+├── routes/
+└── services/
 ```
 
 ### 3.2 Rôle des couches
@@ -104,18 +102,19 @@ routes/
 | Élément | Rôle |
 |---|---|
 | Routes | Associer une URL et une méthode HTTP à un contrôleur |
-| Contrôleurs web | Récupérer les données puis renvoyer une vue ou une redirection |
 | Contrôleurs API | Traiter les demandes REST et renvoyer du JSON |
 | Form Requests | Valider et filtrer les données reçues |
 | Policy | Vérifier qu'une note appartient bien à l'utilisateur connecté |
 | Modèles | Représenter les données et les relations Eloquent |
 | Resources | Choisir les champs exposés par l'API |
 | ApiResponse | Conserver le même format de réponse JSON |
-| Vues Blade | Générer le HTML du front Laravel actuel |
+| Composants React | Afficher l'interface à partir des réponses JSON |
 
-Les contrôleurs web et API sont séparés parce qu'ils ne produisent pas le même type
-de réponse. Ils réutilisent cependant les mêmes modèles, validations et règles
-d'autorisation.
+Les fonctionnalités Dashboard, Notes et Tags ne possèdent plus de contrôleur web ni
+de vue Blade. Leurs contrôleurs API utilisent les modèles, validations et règles
+d'autorisation Laravel, puis les Resources construisent la représentation JSON.
+Les composants React utilisent cette représentation sans accéder directement aux
+modèles.
 
 Il n'y a pas de repository dédié. Les requêtes sont encore simples et Eloquent joue
 déjà ce rôle d'accès aux données. Une couche supplémentaire serait utile seulement
@@ -198,17 +197,17 @@ Quelques règles déjà en place :
 Les principaux codes utilisés sont `200`, `201`, `401`, `403`, `404`, `409`, `422`,
 `429` et `500`.
 
-## 5. Analyse du front actuel
+## 5. Analyse du front avant migration
 
-Cette partie correspond à la première étape de l'exercice 2. Aucun composant React
-n'existe encore.
+Cette partie conserve l'analyse réalisée avant l'implémentation de React. Elle sert à
+comparer l'ancien fonctionnement avec l'architecture actuelle.
 
-Après l'exercice 1, le front est dans un état intermédiaire :
+Après l'exercice 1, le front était dans un état intermédiaire :
 
-- Notes, Tags et Dashboard utilisent des contrôleurs web et des vues Blade ;
-- l'authentification et les paramètres utilisent encore Livewire/Volt ;
-- `resources/js/app.js` ne contient pas de logique métier ;
-- le navigateur n'appelle pas encore `/api/v1`.
+- Notes, Tags et Dashboard utilisaient des contrôleurs web et des vues Blade ;
+- l'authentification et les paramètres utilisaient Livewire/Volt ;
+- `resources/js/app.js` ne contenait pas de logique métier ;
+- le navigateur n'appelait pas encore `/api/v1`.
 
 Le fonctionnement reste donc piloté par Laravel :
 
@@ -220,16 +219,16 @@ Navigateur
   → page HTML ou mise à jour Livewire
 ```
 
-### 5.1 Vues dynamiques à remplacer ou adapter
+### 5.1 Correspondance entre les anciennes vues et React
 
-| Zone actuelle | Rôle | Équivalent React envisagé |
+| Ancienne zone | Rôle | Équivalent React |
 |---|---|---|
 | `dashboard.blade.php` | Afficher les compteurs | `DashboardPage` |
 | `notes/index.blade.php` | Lister, créer et supprimer des notes | `NotesPage`, `NoteForm`, `NoteList`, `NoteItem` |
 | `tags/index.blade.php` | Lister et créer des tags | `TagsPage`, `TagForm`, `TagList`, `TagItem` |
 | Layouts Blade | Navigation et menu utilisateur | `AppLayout`, `Header`, `Navigation` |
 | Vues Livewire Auth | Connexion et inscription | `LoginPage`, `RegisterPage` |
-| Vues Livewire Settings | Profil, mot de passe et suppression du compte | Pages React et endpoints API associés |
+| Vues Livewire Settings | Profil, mot de passe et suppression du compte | Pas encore migrées |
 
 Les composants purement visuels, comme le logo, ne seront pas forcément convertis
 ligne par ligne. Leur rôle sera simplement reproduit dans React.
@@ -245,8 +244,8 @@ ligne par ligne. Leur rôle sera simplement reproduit dans React.
 7. `NoteController@store` crée la note avec l'utilisateur de la session.
 8. Laravel redirige vers `/notes` et recharge la page.
 
-Dans la cible React, le formulaire enverra du JSON à `POST /api/v1/notes`. Après la
-réponse `201`, l'interface mettra à jour les données sans recharger toute la page.
+Dans React, le formulaire envoie maintenant du JSON à `POST /api/v1/notes`. Après la
+réponse `201`, RTK Query actualise les données sans recharger toute la page.
 
 ### 5.3 Avantages et inconvénients du front actuel
 
@@ -266,9 +265,9 @@ Inconvénients :
 - les écrans Livewire mélangent encore PHP et HTML ;
 - certaines fonctionnalités web ne possèdent pas encore d'endpoint API.
 
-### 5.4 Écart avec la cible React
+### 5.4 Écart traité par la migration React
 
-| Actuellement | Cible |
+| Avant la migration | Maintenant |
 |---|---|
 | Pages Blade et Livewire | Composants React en JSX |
 | Routes Laravel | Routeur côté client |
@@ -279,7 +278,7 @@ Inconvénients :
 | Erreurs affichées par Blade | Erreurs API affichées par React |
 | Pas de cache client | Cache RTK Query |
 
-### 5.5 Éléments à conserver ou remplacer
+### 5.5 Nettoyage réalisé et éléments conservés
 
 À conserver côté Laravel :
 
@@ -289,24 +288,21 @@ Inconvénients :
 - les Resources et `ApiResponse` ;
 - Sanctum, les migrations et les tests API.
 
-À compléter avant la suppression du front actuel :
+Supprimés après leur migration vers React :
 
-- vérifier CORS avec l'adresse du futur front ;
-- décider si le profil, le mot de passe, la vérification d'e-mail et la suppression
-  du compte doivent être exposés par l'API ;
-- ajouter les services métier demandés par l'architecture cible ;
-- définir précisément le stockage et la révocation du token.
+- les vues Blade Dashboard, Notes et Tags ;
+- les contrôleurs web associés ;
+- les routes de formulaires web Notes et Tags ;
+- les anciens tests web remplacés par les tests de l'API et de React.
 
-À retirer seulement quand React proposera les mêmes fonctionnalités :
+Conservés temporairement car ils ne sont pas encore migrés :
 
-- les pages Blade remplacées ;
-- les composants Livewire/Volt remplacés ;
-- les contrôleurs et routes web devenus inutiles ;
-- les dépendances Livewire/Flux si aucun écran ne les utilise encore.
+- profil, mot de passe, vérification d'e-mail et suppression du compte ;
+- les composants Livewire/Volt et les dépendances Flux nécessaires à ces écrans.
 
-## 6. Architecture front cible
+## 6. Architecture front mise en place
 
-Le front React sera un projet séparé qui communiquera avec Laravel en HTTP JSON.
+Le front React est un projet séparé qui communique avec Laravel en HTTP JSON.
 
 ```text
 Composants React
@@ -348,8 +344,8 @@ Redux Toolkit + React-Redux + RTK Query
 Pattern : Flux
 ```
 
-Redux Toolkit gérera l'état global. React-Redux reliera les composants au store. RTK
-Query prendra en charge les appels REST, le chargement, les erreurs et le cache.
+Redux Toolkit gère l'état global. React-Redux relie les composants au store. RTK
+Query prend en charge les appels REST, le chargement, les erreurs et le cache.
 
 ### 7.2 Comparaison rapide
 
@@ -365,7 +361,7 @@ manuellement le cache des notes et des tags.
 
 ### 7.3 Répartition de l'état
 
-| État | Emplacement prévu |
+| État | Emplacement |
 |---|---|
 | Champs d'un formulaire | `useState` dans le composant |
 | Utilisateur et token | `authSlice` |
@@ -373,8 +369,8 @@ manuellement le cache des notes et des tags.
 | Compteurs et filtres calculés | Selectors |
 | URL de l'API | Variable d'environnement |
 
-Les notes et les tags ne seront pas copiés dans des slices manuels puisque RTK Query
-les stockera déjà. Cela évite d'avoir deux versions différentes des mêmes données.
+Les notes et les tags ne sont pas copiés dans des slices manuels puisque RTK Query
+les stocke déjà. Cela évite d'avoir deux versions différentes des mêmes données.
 
 ### 7.4 Circulation de l'information
 
@@ -388,17 +384,17 @@ L'utilisateur agit dans la vue
   → React réaffiche le composant
 ```
 
-Les composants d'affichage ne contiendront pas directement les URL ou la logique
+Les composants d'affichage ne contiennent pas directement les URL ou la logique
 HTTP.
 
 ### 7.5 Authentification
 
-Après `login` ou `register`, le token et l'utilisateur seront placés dans
-`authSlice`. RTK Query lira le token et ajoutera automatiquement l'en-tête Bearer aux
+Après `login` ou `register`, le token et l'utilisateur sont placés dans
+`authSlice`. RTK Query lit le token et ajoute automatiquement l'en-tête Bearer aux
 requêtes protégées.
 
-Pour la première version web, le token pourra être conservé dans `sessionStorage`
-afin de restaurer la session après un rechargement. Cette écriture sera réalisée par
+Pour cette première version web, le token est conservé dans `sessionStorage`
+afin de restaurer la session après un rechargement. Cette écriture est réalisée par
 un effet ou un listener, jamais directement dans le reducer Redux.
 
 `sessionStorage` reste accessible au JavaScript. Il faut donc éviter toute injection
@@ -406,12 +402,12 @@ de HTML non contrôlé et ne jamais écrire le token dans les journaux.
 
 ### 7.6 Cache et erreurs
 
-RTK Query utilisera des catégories de cache `Note` et `Tag`. Une création,
+RTK Query utilise des catégories de cache `Note` et `Tag`. Une création,
 modification ou suppression invalidera les données concernées. Le cache API sera
 réinitialisé à la déconnexion afin de ne pas conserver les données du compte
 précédent.
 
-Le front devra gérer les principaux cas suivants :
+Le front gère les principaux cas suivants :
 
 - chargement en cours ;
 - résultat vide ;
@@ -428,18 +424,20 @@ Le projet utilise maintenant PHP 8.4.24 et exige `PHP ^8.4` dans Composer.
 
 Dernière vérification :
 
-- 46 tests réussis ;
-- 180 assertions réussies ;
-- compilation Vite réussie ;
+- 40 tests Laravel et 166 assertions réussis ;
+- 7 tests React réussis ;
+- compilation de production du front React réussie ;
+- CORS validé entre `http://localhost:5173` et l'API Laravel ;
 - dépendances Composer compatibles avec PHP 8.4 ;
 - aucun avis de sécurité Composer.
 
 Points à traiter dans les prochaines étapes :
 
-- créer le projet React séparé ;
-- installer Redux Toolkit, React-Redux et le routeur ;
 - compléter l'API si toutes les pages de paramètres doivent être conservées ;
-- ajouter la couche de services PHP ;
-- tester CORS et le parcours complet depuis React ;
-- conserver le front Laravel jusqu'à ce que le nouveau front soit fonctionnel ;
+- conserver les pages Laravel de profil et de mot de passe tant qu'elles n'ont pas
+  d'équivalent REST ;
+- valider manuellement le parcours complet avec un compte utilisateur avant de
+  retirer les pages Blade remplacées ;
+- ajouter une couche de services PHP seulement si la logique métier devient plus
+  complexe ;
 - produire le PDF final avec les schémas d'architecture.

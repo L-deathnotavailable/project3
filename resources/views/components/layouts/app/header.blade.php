@@ -7,18 +7,18 @@
         <flux:header container class="border-b border-zinc-200 bg-zinc-50 dark:border-zinc-700 dark:bg-zinc-900">
             <flux:sidebar.toggle class="lg:hidden" icon="bars-2" inset="left" />
 
-            <a href="{{ route('dashboard') }}" class="ms-2 me-5 flex items-center space-x-2 rtl:space-x-reverse lg:ms-0" wire:navigate>
+            <a href="{{ config('frontend.url') }}/dashboard" class="ms-2 me-5 flex items-center space-x-2 rtl:space-x-reverse lg:ms-0">
                 <x-app-logo />
             </a>
 
             <flux:navbar class="-mb-px max-lg:hidden">
-                <flux:navbar.item icon="layout-grid" :href="route('dashboard')" :current="request()->routeIs('dashboard')" wire:navigate>
+                <flux:navbar.item icon="layout-grid" :href="config('frontend.url').'/dashboard'">
                     {{ __('Dashboard') }}
                 </flux:navbar.item>
-                <flux:navbar.item icon="document-text" :href="route('notes.index')" :current="request()->routeIs('notes.*')" wire:navigate>
+                <flux:navbar.item icon="document-text" :href="config('frontend.url').'/notes'">
                     {{ __('Notes') }}
                 </flux:navbar.item>
-                <flux:navbar.item icon="tag" :href="route('tags.index')" :current="request()->routeIs('tags.*')" wire:navigate>
+                <flux:navbar.item icon="tag" :href="config('frontend.url').'/tags'">
                     {{ __('Tags') }}
                 </flux:navbar.item>
             </flux:navbar>
@@ -98,19 +98,19 @@
         <flux:sidebar stashable sticky class="lg:hidden border-e border-zinc-200 bg-zinc-50 dark:border-zinc-700 dark:bg-zinc-900">
             <flux:sidebar.toggle class="lg:hidden" icon="x-mark" />
 
-            <a href="{{ route('dashboard') }}" class="ms-1 flex items-center space-x-2 rtl:space-x-reverse" wire:navigate>
+            <a href="{{ config('frontend.url') }}/dashboard" class="ms-1 flex items-center space-x-2 rtl:space-x-reverse">
                 <x-app-logo />
             </a>
 
             <flux:navlist variant="outline">
                 <flux:navlist.group :heading="__('Platform')">
-                    <flux:navlist.item icon="layout-grid" :href="route('dashboard')" :current="request()->routeIs('dashboard')" wire:navigate>
+                    <flux:navlist.item icon="layout-grid" :href="config('frontend.url').'/dashboard'">
                     {{ __('Dashboard') }}
                     </flux:navlist.item>
-                    <flux:navlist.item icon="document-text" :href="route('notes.index')" :current="request()->routeIs('notes.*')" wire:navigate>
+                    <flux:navlist.item icon="document-text" :href="config('frontend.url').'/notes'">
                     {{ __('Notes') }}
                     </flux:navlist.item>
-                    <flux:navlist.item icon="tag" :href="route('tags.index')" :current="request()->routeIs('tags.*')" wire:navigate>
+                    <flux:navlist.item icon="tag" :href="config('frontend.url').'/tags'">
                     {{ __('Tags') }}
                     </flux:navlist.item>
                 </flux:navlist.group>

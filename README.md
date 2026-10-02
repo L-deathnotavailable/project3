@@ -1,66 +1,124 @@
-# Transformez l'architecture d'une application existante
+# Renote
 
-# Plot
+Renote permet de créer des notes et de les classer à l'aide de tags.
 
-Renote is an application that allows user to take and store notes.
-In renote, a user can:
-- create notes
-- visualize notes
-- define relationship between the notes
-- define tags
-- and associate a tag to a note.
+Le projet est maintenant séparé en deux parties :
 
-## Install
+- un back-end Laravel 12 et PHP 8.4 qui expose une API REST ;
+- un front React dans `frontend/`, construit avec Redux Toolkit et RTK Query.
 
-1. Install Laravel's Herd:
-https://laravel.com/docs/12.x/installation#installation-using-herd
+Les écrans métier Dashboard, Notes et Tags sont entièrement gérés par React. Seuls
+les écrans de compte qui n'ont pas encore d'équivalent REST restent temporairement
+en Livewire.
 
-This will install Php, Composer and Laravel.
+## Prérequis
 
-2. Install node v22
+- PHP 8.4 ;
+- Composer ;
+- Node.js 22 ou plus récent ;
+- Herd sous Windows pour servir `http://project3.test`.
 
-Install node version manager (MVN).
-On Windows you can use this distribution:
-https://github.com/coreybutler/nvm-windows#readme
+Vérifiez notamment que la commande `php --version` utilise bien PHP 8.4.
 
+## Installation du back-end
 
-3. Clone this project
+```bash
+composer install
+```
 
-4. Copy `.env.example` to `.env`
+Copiez `.env.example` vers `.env`, puis configurez la base de données et lancez :
 
-5. Generate new APP_KEY with `php artisan key:generate`
+```bash
+php artisan key:generate
+php artisan migrate
+```
 
-6. Run `npm i` and `npm run dev`
+Avec Herd, le back-end et son API sont accessibles à l'adresse :
 
-7. Run `php artisan migrate`
+```text
+http://project3.test
+http://project3.test/api/v1
+```
 
-8. Start Herd
+Pour conserver le style des écrans Livewire de compte encore présents :
 
-9. Access to Herd link from your browser
+```bash
+npm install
+npm run dev
+```
 
-You are setup!
+## Installation du front React
+
+Depuis le dossier `frontend/` :
+
+```bash
+npm install
+```
+
+Copiez ensuite `frontend/.env.example` vers `frontend/.env.local` et adaptez si
+nécessaire l'adresse de l'API :
+
+```env
+VITE_API_BASE_URL=http://project3.test/api/v1
+```
+
+Dans le `.env` Laravel, l'origine du front autorisée par CORS doit correspondre à
+l'adresse affichée par Vite :
+
+```env
+FRONTEND_URL=http://localhost:5173
+```
+
+Lancez enfin le front :
+
+```bash
+npm run dev
+```
+
+Puis ouvrez `http://localhost:5173`.
+
+## Fonctionnalités du front React
+
+- inscription, connexion et déconnexion par token Sanctum ;
+- routes publiques et protégées ;
+- liste, création, modification et suppression des notes ;
+- liste, création, modification et suppression des tags ;
+- affichage des erreurs API et des erreurs de validation ;
+- cache et actualisation des données avec RTK Query ;
+- conservation de la session dans `sessionStorage`.
+
+L'adresse de l'API est centralisée dans une variable d'environnement. Les composants
+React ne contiennent pas d'URL d'endpoint en dur.
+
+## Tests et compilation
+
+Back-end :
+
+```bash
+php artisan test
+```
+
+Front-end :
+
+```bash
+cd frontend
+npm test
+npm run build
+```
 
 ## Architecture
 
-The application follows Laravel's MVC structure:
+Le back-end conserve les données, la validation, les autorisations et les règles
+métier. Le front React gère l'affichage et appelle uniquement l'API REST.
 
-- `app/Models`: Eloquent entities and relationships;
-- `app/Http/Controllers`: web request orchestration;
-- `app/Http/Requests`: reusable validation rules;
-- `app/Policies`: resource authorization;
-- `resources/views`: Blade presentation layer;
-- `routes/web.php`: browser routes;
-- `routes/api.php`: reserved entry point for versioned REST routes.
+```text
+React
+  → Redux Toolkit / RTK Query
+  → API REST Laravel
+  → Form Requests, Policies et contrôleurs
+  → modèles Eloquent
+  → base de données
+```
 
-Future API controllers should be placed in `app/Http/Controllers/Api/V1` and reuse the
-existing models, form requests and policies. JSON representation belongs in
-`app/Http/Resources`, keeping it independent from the Blade views.
-
-## REST API
-
-The versioned API is available under `/api/v1` and uses Laravel Sanctum bearer tokens.
-Its endpoints, response format and curl examples are documented in [`docs/API.md`](docs/API.md).
-
-## Architecture documentation
-
-- Detailed architecture analysis: [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md)
+- Documentation de l'API : [`docs/API.md`](docs/API.md)
+- Analyse d'architecture : [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md)
