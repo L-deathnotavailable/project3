@@ -60,3 +60,7 @@ existing models, form requests and policies. JSON representation belongs in
 
 The versioned API is available under `/api/v1` and uses Laravel Sanctum bearer tokens.
 Its endpoints, response format and curl examples are documented in [`docs/API.md`](docs/API.md).
+
+## Architecture documentation
+
+- Detailed architecture analysis: [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md)
