@@ -8,15 +8,18 @@ use App\Http\Requests\UpdateNoteRequest;
 use App\Http\Resources\NoteResource;
 use App\Http\Responses\ApiResponse;
 use App\Models\Note;
+use App\Services\NoteService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Symfony\Component\HttpFoundation\Response;
 
 class NoteController extends Controller
 {
+    public function __construct(private readonly NoteService $noteService) {}
+
     public function index(Request $request): JsonResponse
     {
-        $notes = $request->user()->notes()->with('tag')->latest()->get();
+        $notes = $this->noteService->listFor($request->user());
 
         return ApiResponse::success(
             'Notes récupérées.',
@@ -26,8 +29,7 @@ class NoteController extends Controller
 
     public function store(StoreNoteRequest $request): JsonResponse
     {
-        $note = $request->user()->notes()->create($request->validated());
-        $note->load('tag');
+        $note = $this->noteService->createFor($request->user(), $request->validated());
 
         return ApiResponse::success(
             'Note créée.',
@@ -50,7 +52,7 @@ class NoteController extends Controller
     {
         $this->authorize('update', $note);
 
-        $note->update($request->validated());
+        $note = $this->noteService->update($note, $request->validated());
 
         return ApiResponse::success(
             'Note mise à jour.',
@@ -61,7 +63,7 @@ class NoteController extends Controller
     public function destroy(Note $note): JsonResponse
     {
         $this->authorize('delete', $note);
-        $note->delete();
+        $this->noteService->delete($note);
 
         return ApiResponse::success('Note supprimée.');
     }

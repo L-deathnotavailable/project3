@@ -8,14 +8,17 @@ use App\Http\Requests\UpdateTagRequest;
 use App\Http\Resources\TagResource;
 use App\Http\Responses\ApiResponse;
 use App\Models\Tag;
+use App\Services\TagService;
 use Illuminate\Http\JsonResponse;
 use Symfony\Component\HttpFoundation\Response;
 
 class TagController extends Controller
 {
+    public function __construct(private readonly TagService $tagService) {}
+
     public function index(): JsonResponse
     {
-        $tags = Tag::query()->withCount('notes')->orderBy('name')->get();
+        $tags = $this->tagService->list();
 
         return ApiResponse::success(
             'Tags récupérés.',
@@ -25,8 +28,7 @@ class TagController extends Controller
 
     public function store(StoreTagRequest $request): JsonResponse
     {
-        $tag = Tag::query()->create($request->validated());
-        $tag->loadCount('notes');
+        $tag = $this->tagService->create($request->validated());
 
         return ApiResponse::success(
             'Tag créé.',
@@ -45,7 +47,7 @@ class TagController extends Controller
 
     public function update(UpdateTagRequest $request, Tag $tag): JsonResponse
     {
-        $tag->update($request->validated());
+        $tag = $this->tagService->update($tag, $request->validated());
 
         return ApiResponse::success(
             'Tag mis à jour.',
@@ -55,7 +57,7 @@ class TagController extends Controller
 
     public function destroy(Tag $tag): JsonResponse
     {
-        if ($tag->notes()->exists()) {
+        if ($this->tagService->isUsed($tag)) {
             return ApiResponse::error(
                 'Ce tag ne peut pas être supprimé car il est utilisé par une ou plusieurs notes.',
                 null,
@@ -63,7 +65,7 @@ class TagController extends Controller
             );
         }
 
-        $tag->delete();
+        $this->tagService->delete($tag);
 
         return ApiResponse::success('Tag supprimé.');
     }

@@ -116,9 +116,10 @@ React
   → Redux Toolkit / RTK Query
   → API REST Laravel
   → Form Requests, Policies et contrôleurs
+  → services métier
   → modèles Eloquent
   → base de données
 ```
 
 - Documentation de l'API : [`docs/API.md`](docs/API.md)
-- Analyse d'architecture : [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md)
+- Documentation d'architecture : [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md)

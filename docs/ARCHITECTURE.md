@@ -1,443 +1,316 @@
-# Documentation d'architecture de Renote
+# Architecture de Renote
 
-## 1. Présentation du projet
+## 1. Objet du document
 
-Renote est une application de prise de notes. Un utilisateur peut créer des notes,
-leur associer un tag et consulter ses propres notes.
+Renote permet à un utilisateur de créer des notes et de les classer avec des tags.
+L'application a été séparée en deux projets qui communiquent en JSON :
 
-Au départ, toute l'application fonctionnait dans Laravel : PHP gérait les données,
-les actions utilisateur et la génération des pages HTML. Le but du projet est de
-séparer progressivement ces responsabilités :
+- un front React piloté par Redux Toolkit et RTK Query ;
+- un back-end Laravel 12 sous PHP 8.4, organisé en MVC et exposant une API REST.
 
-- Laravel reste responsable des données, de la sécurité et des règles métier ;
-- une API REST permet d'accéder aux fonctionnalités ;
-- un front React pourra utiliser cette API depuis le web et, plus tard, depuis
-  d'autres types d'appareils.
+Le PDF final reprend ces éléments sous forme de schémas : architecture initiale,
+architecture refactorisée actuelle, organisation du front et cheminement d'une
+création de note.
 
-## 2. Architecture de départ
+## 2. Architecture initiale
 
-### 2.1 Fonctionnement
-
-Les fonctionnalités Notes et Tags étaient principalement regroupées dans deux
-composants Livewire :
-
-- `App\Livewire\Notes` gérait la liste, la création et la suppression des notes ;
-- `App\Livewire\TagForm` gérait la création des tags.
-
-Le chemin principal était le suivant :
+Au départ, Laravel gérait les actions, les données et la génération du HTML. Les
+composants Livewire `Notes` et `TagForm` mélangeaient l'état de l'interface, la
+validation et l'accès aux modèles.
 
 ```text
 Navigateur
   → routes/web.php
-  → dashboard.blade.php
-  → composants Livewire Notes et TagForm
-  → modèles Note et Tag
+  → vue Blade et composants Livewire
+  → modèles Eloquent
   → base de données
+  → HTML renvoyé au navigateur
 ```
 
-Les composants Livewire contenaient à la fois l'état de l'interface, les règles de
-validation et les appels aux modèles. Les URL `/dashboard`, `/notes` et `/tags`
-affichaient également la même page.
+Cette organisation avait l'avantage d'être rapide à mettre en place et simple à
+déployer. Elle convenait à une petite application web, mais présentait plusieurs
+limites :
 
-### 2.2 Avantages
+- le front n'était pas réutilisable par une application mobile ;
+- l'interface et les traitements PHP étaient fortement liés ;
+- les mêmes données n'étaient pas accessibles par une API versionnée ;
+- il n'existait ni état client partagé ni cache côté navigateur ;
+- les règles d'autorisation étaient plus difficiles à isoler et à tester.
 
-- Peu de fichiers étaient nécessaires pour obtenir une application fonctionnelle.
-- Livewire permettait une interface assez dynamique sans écrire beaucoup de
-  JavaScript.
-- Laravel gérait déjà les sessions, la validation et la protection CSRF.
-- Cette solution convenait à une petite application uniquement destinée au web.
+## 3. Architecture actuelle
 
-### 2.3 Limites
-
-- La présentation et les traitements étaient regroupés dans les composants
-  Livewire.
-- Les pages Notes et Tags n'étaient pas réellement séparées.
-- Il n'existait pas de contrôleurs métier dédiés à ces fonctionnalités.
-- Les règles d'autorisation étaient difficiles à réutiliser ailleurs.
-- Aucun client mobile ou front indépendant ne pouvait utiliser l'application.
-- Il n'existait ni API versionnée ni format de réponse JSON commun.
-
-## 3. Back-end après la refactorisation
-
-Le back-end suit maintenant une structure MVC plus classique :
+Les fonctionnalités Dashboard, Notes, Tags, connexion et inscription sont maintenant
+gérées par React. Laravel ne génère plus leur interface : il valide les requêtes,
+applique les autorisations, utilise les modèles et renvoie du JSON.
 
 ```text
-Route
-  → validation de la requête
-  → contrôleur
-  → modèle Eloquent
-  → base de données
-  → vue Blade ou réponse JSON
+React → Redux / RTK Query → API Laravel → services → Eloquent → base de données
+  ↑                                                                  ↓
+  └──────────────── réponse JSON et mise à jour du cache ─────────────┘
 ```
 
-### 3.1 Organisation principale
+### 3.1 Répartition des responsabilités
+
+| Partie | Responsabilité |
+|---|---|
+| Composants et pages React | Afficher l'interface et transmettre les actions de l'utilisateur |
+| React Router | Gérer les routes publiques, protégées et la navigation |
+| Redux Toolkit | Conserver l'utilisateur connecté et le token |
+| RTK Query | Exécuter les appels HTTP, gérer le cache, les chargements et les erreurs |
+| Routes Laravel | Associer une méthode et une URL à un contrôleur |
+| Contrôleurs API | Orchestrer un cas d'usage et construire la réponse HTTP |
+| Services PHP | Regrouper les opérations métier et l'accès aux modèles |
+| Form Requests | Valider et filtrer les données reçues |
+| Policy | Empêcher l'accès aux notes d'un autre utilisateur |
+| Modèles Eloquent | Représenter les utilisateurs, notes, tags et leurs relations |
+| Resources / ApiResponse | Sélectionner les données exposées et uniformiser le JSON |
+| Base de données | Conserver les données et les tokens Sanctum |
+
+### 3.2 View, état et Model
+
+Le front suit le flux unidirectionnel de Redux, donc il ne s'agit pas d'un MVVM
+strict. On peut néanmoins rapprocher les responsabilités des trois rôles demandés :
+
+- **View** : pages et composants JSX, par exemple `NotesPage`, `NoteForm` et
+  `NoteItem` ;
+- **rôle de ViewModel** : hooks RTK Query, `authSlice`, selectors et états locaux de
+  formulaire ; cette couche prépare les données et les actions utilisées par la vue ;
+- **Model** : modèles Eloquent `User`, `Note` et `Tag` dans Laravel. Les données
+  reçues par React sont des représentations JSON mises en cache, pas des modèles
+  métier dupliqués côté client.
+
+### 3.3 Organisation des fichiers
 
 ```text
+frontend/src/
+├── app/                 configuration du store et du routeur
+├── components/          composants partagés et layouts
+├── features/
+│   ├── auth/            connexion, inscription et état de session
+│   ├── dashboard/       synthèse des notes et tags
+│   ├── notes/           vues, formulaires et endpoints Notes
+│   └── tags/            vues, formulaires et endpoints Tags
+├── routes/              protection des routes
+└── services/            configuration HTTP commune
+
 app/
 ├── Http/
-│   ├── Controllers/
-│   │   └── Api/V1/
-│   │       ├── AuthController.php
-│   │       ├── NoteController.php
-│   │       └── TagController.php
+│   ├── Controllers/Api/V1/
 │   ├── Requests/
 │   ├── Resources/
 │   └── Responses/ApiResponse.php
 ├── Models/
-└── Policies/NotePolicy.php
+├── Policies/
+└── Services/
+    ├── AuthService.php
+    ├── NoteService.php
+    └── TagService.php
 
 routes/
 └── api.php
-
-frontend/src/
-├── app/
-├── components/
-├── features/
-├── routes/
-└── services/
 ```
 
-### 3.2 Rôle des couches
+## 4. Rôle des principales couches
 
-| Élément | Rôle |
-|---|---|
-| Routes | Associer une URL et une méthode HTTP à un contrôleur |
-| Contrôleurs API | Traiter les demandes REST et renvoyer du JSON |
-| Form Requests | Valider et filtrer les données reçues |
-| Policy | Vérifier qu'une note appartient bien à l'utilisateur connecté |
-| Modèles | Représenter les données et les relations Eloquent |
-| Resources | Choisir les champs exposés par l'API |
-| ApiResponse | Conserver le même format de réponse JSON |
-| Composants React | Afficher l'interface à partir des réponses JSON |
+### Routes
 
-Les fonctionnalités Dashboard, Notes et Tags ne possèdent plus de contrôleur web ni
-de vue Blade. Leurs contrôleurs API utilisent les modèles, validations et règles
-d'autorisation Laravel, puis les Resources construisent la représentation JSON.
-Les composants React utilisent cette représentation sans accéder directement aux
-modèles.
+`routes/api.php` expose l'API sous le préfixe `/api/v1`. L'inscription et la
+connexion sont publiques. Les autres routes passent par `auth:sanctum`.
+`frontend/src/app/router.jsx` définit de son côté les écrans React et protège les
+pages privées.
 
-Il n'y a pas de repository dédié. Les requêtes sont encore simples et Eloquent joue
-déjà ce rôle d'accès aux données. Une couche supplémentaire serait utile seulement
-si les requêtes ou les sources de données devenaient plus complexes.
+### Controllers
 
-La cible technique mentionne aussi des services métier. Ils devront être ajoutés
-lorsque les cas d'usage seront complétés, afin d'éviter de faire grossir les
-contrôleurs.
+`AuthController`, `NoteController` et `TagController` reçoivent des données déjà
+validées, délèguent le traitement au service concerné puis renvoient une réponse
+JSON. Ils ne génèrent aucune vue HTML.
 
-### 3.3 Données principales
+### Models
 
-- Un utilisateur peut posséder plusieurs notes.
-- Une note appartient à un seul utilisateur.
-- Une note appartient à un tag.
-- Un tag peut être utilisé par plusieurs notes.
-- Les notes sont privées.
-- Les tags forment pour l'instant un catalogue partagé.
-- Sanctum stocke les tokens dans `personal_access_tokens`.
+Les modèles `User`, `Note` et `Tag` portent les relations Eloquent : un utilisateur
+possède plusieurs notes, une note appartient à un utilisateur et à un tag, et un tag
+peut être associé à plusieurs notes.
 
-## 4. API REST
+### Services
 
-L'API locale utilise l'adresse suivante :
+`AuthService`, `NoteService` et `TagService` regroupent les opérations sur les
+modèles. Par exemple, `NoteService` charge uniquement les notes de l'utilisateur,
+crée une note pour ce propriétaire et gère les mises à jour ou suppressions. Ils
+sont injectés dans les contrôleurs par le conteneur Laravel.
 
-```text
-http://project3.test/api/v1
+### Effets côté front
+
+Les services HTTP du front sont regroupés dans `frontend/src/services/api.js` et
+dans `authApi.js`, `notesApi.js` et `tagsApi.js`. Ils centralisent l'URL de base,
+l'en-tête Bearer, les erreurs `401`, le cache et son invalidation. Les composants
+d'affichage ne font donc pas de `fetch` directement.
+
+## 5. Catalogue de l'API REST
+
+URL de base en local : `http://project3.test/api/v1`.
+
+| Méthode | URL | Authentification | Utilisation côté React | Succès |
+|---|---|---|---|---|
+| `POST` | `/register` | Publique | Créer un compte | `201` |
+| `POST` | `/login` | Publique | Ouvrir une session | `200` |
+| `POST` | `/logout` | Bearer | Révoquer le token courant | `200` |
+| `GET` | `/notes` | Bearer | Afficher les notes et le dashboard | `200` |
+| `POST` | `/notes` | Bearer | Créer une note | `201` |
+| `GET` | `/notes/{id}` | Bearer | Obtenir une note précise | `200` |
+| `PUT/PATCH` | `/notes/{id}` | Bearer | Modifier une note | `200` |
+| `DELETE` | `/notes/{id}` | Bearer | Supprimer une note | `200` |
+| `GET` | `/tags` | Bearer | Afficher les tags et alimenter les formulaires | `200` |
+| `POST` | `/tags` | Bearer | Créer un tag | `201` |
+| `GET` | `/tags/{id}` | Bearer | Obtenir un tag précis | `200` |
+| `PUT/PATCH` | `/tags/{id}` | Bearer | Renommer un tag | `200` |
+| `DELETE` | `/tags/{id}` | Bearer | Supprimer un tag inutilisé | `200` |
+
+Les exemples `curl` et les corps de requête sont détaillés dans
+[`API.md`](API.md).
+
+### Exemples de réponses
+
+Connexion réussie :
+
+```json
+{
+  "status": "success",
+  "message": "Authentification réussie.",
+  "data": {
+    "token": "1|token-sanctum",
+    "token_type": "Bearer",
+    "user": {
+      "id": 1,
+      "name": "Lara Croft",
+      "email": "lara@example.com"
+    }
+  }
+}
 ```
 
-Toutes les réponses suivent ce format :
+Création d'une note (`201`) :
 
 ```json
 {
   "status": "success",
   "message": "Note créée.",
-  "data": {}
+  "data": {
+    "id": 12,
+    "text": "Préparer la démonstration",
+    "tag": {
+      "id": 2,
+      "name": "Travail",
+      "created_at": "2026-10-01T14:00:00.000000Z",
+      "updated_at": "2026-10-01T14:00:00.000000Z"
+    },
+    "created_at": "2026-10-02T08:30:00.000000Z",
+    "updated_at": "2026-10-02T08:30:00.000000Z"
+  }
 }
 ```
 
-En cas d'erreur, `status` vaut `error`. Les erreurs de validation sont placées dans
-`data.errors`.
+Erreur de validation (`422`) :
 
-### 4.1 Routes disponibles
-
-| Méthode | Route | Protection | Rôle |
-|---|---|---|---|
-| `POST` | `/register` | Publique | Créer un compte et recevoir un token |
-| `POST` | `/login` | Publique | Se connecter et recevoir un token |
-| `POST` | `/logout` | Bearer | Révoquer le token courant |
-| `GET` | `/notes` | Bearer | Lister ses notes |
-| `POST` | `/notes` | Bearer | Créer une note |
-| `GET` | `/notes/{id}` | Bearer | Consulter une note |
-| `PUT/PATCH` | `/notes/{id}` | Bearer | Modifier une note |
-| `DELETE` | `/notes/{id}` | Bearer | Supprimer une note |
-| `GET` | `/tags` | Bearer | Lister les tags |
-| `POST` | `/tags` | Bearer | Créer un tag |
-| `GET` | `/tags/{id}` | Bearer | Consulter un tag |
-| `PUT/PATCH` | `/tags/{id}` | Bearer | Modifier un tag |
-| `DELETE` | `/tags/{id}` | Bearer | Supprimer un tag inutilisé |
-
-La documentation détaillée avec des exemples `curl` se trouve dans `docs/API.md`.
-
-### 4.2 Authentification et sécurité
-
-Après une inscription ou une connexion, l'API renvoie un token Sanctum. Le client le
-transmet ensuite dans l'en-tête suivant :
-
-```text
-Authorization: Bearer <token>
+```json
+{
+  "status": "error",
+  "message": "Les données fournies sont invalides.",
+  "data": {
+    "errors": {
+      "text": ["The text field is required."]
+    }
+  }
+}
 ```
 
-Quelques règles déjà en place :
+## 6. Exemple complet : création d'une note
 
-- les mots de passe sont hachés ;
-- ils ne sont jamais renvoyés dans les réponses ;
-- un utilisateur ne peut pas consulter ou modifier les notes d'un autre compte ;
-- le serveur déduit le propriétaire d'une note à partir du token ;
-- les données sont validées avant leur enregistrement ;
-- les tentatives de connexion et d'inscription sont limitées ;
-- les erreurs internes ne renvoient pas de trace technique au client.
+1. L'utilisateur valide `NoteForm` avec un texte et un `tag_id`.
+2. Le composant appelle la mutation `createNote` de RTK Query.
+3. `api.js` ajoute `Accept: application/json`, `Content-Type: application/json` et
+   le token Sanctum dans `Authorization: Bearer ...`.
+4. `POST /api/v1/notes` traverse la route protégée par `auth:sanctum`.
+5. `StoreNoteRequest` valide le corps de la requête.
+6. `NoteController@store` délègue la création à `NoteService`.
+7. Le service utilise la relation de l'utilisateur connecté pour créer la note ;
+   l'identifiant du propriétaire ne vient donc jamais du navigateur.
+8. Eloquent écrit en base, puis le service renvoie au contrôleur la note avec son tag.
+9. `NoteResource` et `ApiResponse` construisent le JSON avec le code `201`.
+10. RTK Query invalide les listes `Note` et `Tag`, recharge les données concernées
+   puis React réaffiche l'écran sans rechargement complet de la page.
 
-Les principaux codes utilisés sont `200`, `201`, `401`, `403`, `404`, `409`, `422`,
-`429` et `500`.
+Ce trajet est illustré dans le PDF final.
 
-## 5. Analyse du front avant migration
+## 7. Choix techniques
 
-Cette partie conserve l'analyse réalisée avant l'implémentation de React. Elle sert à
-comparer l'ancien fonctionnement avec l'architecture actuelle.
+### React et Vite
 
-Après l'exercice 1, le front était dans un état intermédiaire :
+React permet de séparer l'interface du serveur et de réutiliser la même API pour un
+client mobile. Vite fournit le serveur de développement et la compilation de
+production. L'adresse de l'API vient de `VITE_API_BASE_URL`, elle n'est pas inscrite
+en dur dans les composants.
 
-- Notes, Tags et Dashboard utilisaient des contrôleurs web et des vues Blade ;
-- l'authentification et les paramètres utilisaient Livewire/Volt ;
-- `resources/js/app.js` ne contenait pas de logique métier ;
-- le navigateur n'appelait pas encore `/api/v1`.
+### Redux Toolkit et RTK Query
 
-Le fonctionnement reste donc piloté par Laravel :
+Redux Toolkit a été choisi pour son flux prévisible et ses outils de débogage. RTK
+Query évite de recopier les notes et les tags dans plusieurs états : les données du
+serveur restent dans son cache, tandis que `authSlice` ne conserve que la session.
 
-```text
-Navigateur
-  → route web Laravel
-  → contrôleur ou composant Livewire
-  → modèle et base de données
-  → page HTML ou mise à jour Livewire
+### API versionnée et Sanctum
+
+Le préfixe `/api/v1` permet de faire évoluer l'API sans casser immédiatement les
+clients existants. Sanctum fournit des tokens adaptés à plusieurs clients. Les notes
+sont filtrées par l'utilisateur authentifié et `NotePolicy` protège les opérations
+sur une note précise.
+
+### Séparation des responsabilités et SOLID
+
+- **Responsabilité unique** : routes, validation, autorisation, services métier,
+  persistance, représentation JSON et affichage React sont dans des fichiers
+  différents.
+- **Ouvert/fermé** : les endpoints RTK Query sont ajoutés par fonctionnalité et une
+  nouvelle ressource API peut être ajoutée sans modifier les écrans existants.
+- **Substitution et ségrégation des interfaces** : ces principes sont peu visibles
+  ici, car le projet utilise peu d'héritage et ne définit pas de grandes interfaces
+  métier. Aucune abstraction artificielle n'a été ajoutée uniquement pour les
+  illustrer.
+- **Inversion des dépendances** : Laravel injecte les services dans les contrôleurs
+  via son conteneur et le front dépend d'un service API commun, pas d'appels HTTP
+  dispersés dans les vues.
+
+## 8. Sécurité et limites connues
+
+- les mots de passe sont hachés et ne figurent jamais dans les réponses ;
+- les entrées sont validées par les Form Requests ;
+- les notes d'un autre utilisateur renvoient `403` ;
+- une suppression de tag utilisé renvoie `409` ;
+- les erreurs internes n'exposent pas de trace technique ;
+- la connexion et l'inscription sont limitées par un throttle ;
+- le token est conservé dans `sessionStorage` et supprimé après déconnexion ou
+  réponse `401`.
+
+Les écrans de profil, mot de passe et vérification d'e-mail restent temporairement en
+Livewire car ils ne disposent pas encore d'endpoints REST. Le cœur métier Notes et
+Tags est, lui, complètement séparé. En développement, `http://localhost:5173` n'est
+accessible que pendant l'exécution de `npm run dev` dans `frontend/`.
+
+## 9. Vérification
+
+Les endpoints sont couverts par les tests Feature Laravel : authentification,
+révocation du token, CRUD Notes, CRUD Tags, validation, autorisation, conflit et
+CORS. Les appels principaux ont aussi été vérifiés manuellement avec Postman.
+
+Dernière exécution du projet :
+
+- 40 tests Laravel, 166 assertions ;
+- 7 tests React ;
+- compilation de production React réussie.
+
+Commandes de contrôle :
+
+```bash
+php artisan test
+cd frontend
+npm test
+npm run build
 ```
-
-### 5.1 Correspondance entre les anciennes vues et React
-
-| Ancienne zone | Rôle | Équivalent React |
-|---|---|---|
-| `dashboard.blade.php` | Afficher les compteurs | `DashboardPage` |
-| `notes/index.blade.php` | Lister, créer et supprimer des notes | `NotesPage`, `NoteForm`, `NoteList`, `NoteItem` |
-| `tags/index.blade.php` | Lister et créer des tags | `TagsPage`, `TagForm`, `TagList`, `TagItem` |
-| Layouts Blade | Navigation et menu utilisateur | `AppLayout`, `Header`, `Navigation` |
-| Vues Livewire Auth | Connexion et inscription | `LoginPage`, `RegisterPage` |
-| Vues Livewire Settings | Profil, mot de passe et suppression du compte | Pas encore migrées |
-
-Les composants purement visuels, comme le logo, ne seront pas forcément convertis
-ligne par ligne. Leur rôle sera simplement reproduit dans React.
-
-### 5.2 Exemple : création d'une note aujourd'hui
-
-1. Le navigateur demande `GET /notes` avec le cookie de session.
-2. `NoteController@index` charge les notes de l'utilisateur et les tags.
-3. Laravel transmet ces données à `notes/index.blade.php`.
-4. La vue génère une page HTML complète.
-5. L'utilisateur envoie un formulaire contenant `text`, `tag_id` et le jeton CSRF.
-6. `StoreNoteRequest` valide les données.
-7. `NoteController@store` crée la note avec l'utilisateur de la session.
-8. Laravel redirige vers `/notes` et recharge la page.
-
-Dans React, le formulaire envoie maintenant du JSON à `POST /api/v1/notes`. Après la
-réponse `201`, RTK Query actualise les données sans recharger toute la page.
-
-### 5.3 Avantages et inconvénients du front actuel
-
-Avantages :
-
-- mise en place rapide avec Laravel ;
-- peu de JavaScript à maintenir ;
-- sessions, formulaires et validation déjà intégrés ;
-- déploiement simple puisqu'il n'y a qu'une application.
-
-Inconvénients :
-
-- les pages HTML ne sont pas réutilisables sur mobile ;
-- la navigation dépend des routes Laravel ;
-- les actions utilisent des formulaires et des redirections ;
-- il n'existe pas d'état client partagé ou de cache ;
-- les écrans Livewire mélangent encore PHP et HTML ;
-- certaines fonctionnalités web ne possèdent pas encore d'endpoint API.
-
-### 5.4 Écart traité par la migration React
-
-| Avant la migration | Maintenant |
-|---|---|
-| Pages Blade et Livewire | Composants React en JSX |
-| Routes Laravel | Routeur côté client |
-| Session et cookie Laravel | Token Sanctum envoyé à l'API |
-| Données injectées dans le HTML | Réponses JSON |
-| Formulaires et redirections | Appels API sans rechargement complet |
-| Pas de store client | Redux Toolkit et RTK Query |
-| Erreurs affichées par Blade | Erreurs API affichées par React |
-| Pas de cache client | Cache RTK Query |
-
-### 5.5 Nettoyage réalisé et éléments conservés
-
-À conserver côté Laravel :
-
-- les routes et contrôleurs API ;
-- les Form Requests et la Policy ;
-- les modèles Eloquent ;
-- les Resources et `ApiResponse` ;
-- Sanctum, les migrations et les tests API.
-
-Supprimés après leur migration vers React :
-
-- les vues Blade Dashboard, Notes et Tags ;
-- les contrôleurs web associés ;
-- les routes de formulaires web Notes et Tags ;
-- les anciens tests web remplacés par les tests de l'API et de React.
-
-Conservés temporairement car ils ne sont pas encore migrés :
-
-- profil, mot de passe, vérification d'e-mail et suppression du compte ;
-- les composants Livewire/Volt et les dépendances Flux nécessaires à ces écrans.
-
-## 6. Architecture front mise en place
-
-Le front React est un projet séparé qui communique avec Laravel en HTTP JSON.
-
-```text
-Composants React
-  → state management et effets
-  → API REST Laravel
-  → services métier et modèles
-  → base de données
-```
-
-Laravel garde la logique métier. React gère l'affichage, l'état de l'interface et les
-appels vers l'API.
-
-Une organisation par fonctionnalité a été retenue :
-
-```text
-frontend/
-├── src/
-│   ├── app/                 store, routeur et composant principal
-│   ├── components/          composants communs
-│   ├── features/
-│   │   ├── auth/            connexion et inscription
-│   │   ├── notes/           pages et composants Notes
-│   │   └── tags/            pages et composants Tags
-│   ├── routes/              routes publiques et protégées
-│   ├── services/            configuration de l'API
-│   ├── styles/
-│   └── main.jsx
-└── tests/
-```
-
-## 7. Choix du state management
-
-### 7.1 Solution choisie
-
-La solution retenue est :
-
-```text
-Redux Toolkit + React-Redux + RTK Query
-Pattern : Flux
-```
-
-Redux Toolkit gère l'état global. React-Redux relie les composants au store. RTK
-Query prend en charge les appels REST, le chargement, les erreurs et le cache.
-
-### 7.2 Comparaison rapide
-
-| Solution | Points forts | Limites pour Renote |
-|---|---|---|
-| Redux Toolkit | Flux clair, actions traçables, selectors, DevTools et RTK Query | Plus de notions à apprendre |
-| Zustand | Très simple et peu de code | Organisation du cache et des effets à définir nous-mêmes |
-| MobX | Réactivité automatique et peu de code répétitif | Flux plus implicite et moins proche des consignes de l'exercice |
-
-Redux Toolkit a été choisi parce qu'il correspond directement au découpage demandé :
-UI, actions, store, selectors et effets. RTK Query évite aussi de développer
-manuellement le cache des notes et des tags.
-
-### 7.3 Répartition de l'état
-
-| État | Emplacement |
-|---|---|
-| Champs d'un formulaire | `useState` dans le composant |
-| Utilisateur et token | `authSlice` |
-| Notes et tags venant du serveur | Cache RTK Query |
-| Compteurs et filtres calculés | Selectors |
-| URL de l'API | Variable d'environnement |
-
-Les notes et les tags ne sont pas copiés dans des slices manuels puisque RTK Query
-les stocke déjà. Cela évite d'avoir deux versions différentes des mêmes données.
-
-### 7.4 Circulation de l'information
-
-```text
-L'utilisateur agit dans la vue
-  → le composant déclenche une action ou une mutation RTK Query
-  → RTK Query appelle l'API Laravel
-  → Laravel renvoie { status, message, data }
-  → le cache ou le store Redux est mis à jour
-  → un hook ou un selector lit le nouvel état
-  → React réaffiche le composant
-```
-
-Les composants d'affichage ne contiennent pas directement les URL ou la logique
-HTTP.
-
-### 7.5 Authentification
-
-Après `login` ou `register`, le token et l'utilisateur sont placés dans
-`authSlice`. RTK Query lit le token et ajoute automatiquement l'en-tête Bearer aux
-requêtes protégées.
-
-Pour cette première version web, le token est conservé dans `sessionStorage`
-afin de restaurer la session après un rechargement. Cette écriture est réalisée par
-un effet ou un listener, jamais directement dans le reducer Redux.
-
-`sessionStorage` reste accessible au JavaScript. Il faut donc éviter toute injection
-de HTML non contrôlé et ne jamais écrire le token dans les journaux.
-
-### 7.6 Cache et erreurs
-
-RTK Query utilise des catégories de cache `Note` et `Tag`. Une création,
-modification ou suppression invalidera les données concernées. Le cache API sera
-réinitialisé à la déconnexion afin de ne pas conserver les données du compte
-précédent.
-
-Le front gère les principaux cas suivants :
-
-- chargement en cours ;
-- résultat vide ;
-- erreurs de validation `422` ;
-- authentification absente ou expirée `401` ;
-- accès interdit `403` ;
-- ressource inexistante `404` ;
-- conflit lors de la suppression d'un tag `409` ;
-- erreur serveur `500`.
-
-## 8. Validation actuelle et points restants
-
-Le projet utilise maintenant PHP 8.4.24 et exige `PHP ^8.4` dans Composer.
-
-Dernière vérification :
-
-- 40 tests Laravel et 166 assertions réussis ;
-- 7 tests React réussis ;
-- compilation de production du front React réussie ;
-- CORS validé entre `http://localhost:5173` et l'API Laravel ;
-- dépendances Composer compatibles avec PHP 8.4 ;
-- aucun avis de sécurité Composer.
-
-Points à traiter dans les prochaines étapes :
-
-- compléter l'API si toutes les pages de paramètres doivent être conservées ;
-- conserver les pages Laravel de profil et de mot de passe tant qu'elles n'ont pas
-  d'équivalent REST ;
-- valider manuellement le parcours complet avec un compte utilisateur avant de
-  retirer les pages Blade remplacées ;
-- ajouter une couche de services PHP seulement si la logique métier devient plus
-  complexe ;
-- produire le PDF final avec les schémas d'architecture.

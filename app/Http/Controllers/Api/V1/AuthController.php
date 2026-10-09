@@ -7,16 +7,18 @@ use App\Http\Requests\LoginRequest;
 use App\Http\Requests\RegisterRequest;
 use App\Http\Responses\ApiResponse;
 use App\Models\User;
+use App\Services\AuthService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Hash;
 use Symfony\Component\HttpFoundation\Response;
 
 class AuthController extends Controller
 {
+    public function __construct(private readonly AuthService $authService) {}
+
     public function register(RegisterRequest $request): JsonResponse
     {
-        $user = User::query()->create(
+        $user = $this->authService->register(
             $request->safe()->only(['name', 'email', 'password'])
         );
 
@@ -31,9 +33,9 @@ class AuthController extends Controller
     public function login(LoginRequest $request): JsonResponse
     {
         $credentials = $request->safe()->only(['email', 'password']);
-        $user = User::query()->where('email', $credentials['email'])->first();
+        $user = $this->authService->authenticate($credentials);
 
-        if (! $user || ! Hash::check($credentials['password'], $user->password)) {
+        if (! $user) {
             return ApiResponse::error('Identifiants invalides.', null, 401);
         }
 
@@ -46,7 +48,7 @@ class AuthController extends Controller
 
     public function logout(Request $request): JsonResponse
     {
-        $request->user()->currentAccessToken()?->delete();
+        $this->authService->logout($request->user());
 
         return ApiResponse::success('Déconnexion réussie.');
     }
@@ -57,16 +59,10 @@ class AuthController extends Controller
         string $message,
         int $status = Response::HTTP_OK,
     ): JsonResponse {
-        $token = $user->createToken($deviceName);
-
-        return ApiResponse::success($message, [
-            'token' => $token->plainTextToken,
-            'token_type' => 'Bearer',
-            'user' => [
-                'id' => $user->id,
-                'name' => $user->name,
-                'email' => $user->email,
-            ],
-        ], $status);
+        return ApiResponse::success(
+            $message,
+            $this->authService->createTokenData($user, $deviceName),
+            $status,
+        );
     }
 }
